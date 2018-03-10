@@ -1,0 +1,371 @@
+<!DOCTYPE html><body style="margin:0"><script>
+(function(){
+  
+  // const
+  var i1=100,i2=200,i3=400,i4=800, i5=i3*4, i6=i3*8;
+  
+  // params and states
+  var W=window, D=document, t0=0, ct, dt=0, wndActive=1, map;
+  var fps = 50/3/(typeof W.orientation!=='undefined'?2:1), F, key=-1, jumpSnd, jpause;
+  t0 = f_time();
+  ct = f_time();
+  
+  // player
+  var X, pY, Y, S, V, vA;
+  
+  // layers
+  var C = f_canvas(0), c = C[0], C = C[1], c1 = f_canvas(1), c2 = f_canvas(2), c3 = f_canvas(3);
+  
+  // geometry
+  var pCar = f_Path( "67 33.5L-94.5 6 -95-21.5l11-12h66l12 12h61l40 22 -2 21 -12 12H-67zM4-17.5l14 12h59l-22-12H4", 0, "" );
+  var pC = [ 0,
+    f_Path( "4-25l-31 5c-6 26-3 20 16 19 20 0 22 7 15-24", 0, "" ),
+    f_Path( "9-51l-19 3c", 1, " 0-1 0-2-1-3" ),
+    f_Path( "13-70l-11 2c-1 6-2 12-4 20", 1, "-2-9-3-16-4-22" ),
+    f_Path( "19-92c-2 0-4 15-10 44", 1, "-6-29-8-44-10-44" )
+  ];
+  
+  // audio 
+  var A = new(W.AudioContext||W.webkitAudioContext)(), OS = A.createOscillator(), GN = A.createGain();
+  f_vol( 0 ), OS.connect( GN ), GN.connect( A.destination ), OS.type = 'sine', OS.start();
+  
+  // DOM
+  D.body.append( c );
+  D.onkeydown = c.onmousedown = c.ontouchstart = f_keydown;
+  
+  // background layers
+  f_genCave( c1 );
+  f_genCave( c2 );
+  f_genCave( c3 );
+  
+  
+  function f_newGame() {
+    F = jumpSnd = jpause = X = pY= Y = S = vA = 0;
+    V = 1;
+    map=[[-1],[]];
+  }
+  f_newGame();
+    
+  
+  // main loop
+  //
+  function f_main() {
+  
+    // animation (desktop-60fps/mobile-30fps)
+    setTimeout( f_main, fps );
+    
+    // window active 
+    if( !wndActive )
+      return;
+    
+    // update timers
+    n = f_time();
+    dt = n - ct;
+    ct = n;
+    if( dt>.1 )
+      dt = .1;
+    
+    // approximation V to 2.5
+    V = dt/5 * 2.5 + ( 1 - dt/5 ) * V;
+    // scores (path)
+    S += V * dt * 10;
+    // wheel speed
+    vA += Math.sqrt(V) * dt * 8;
+
+    // clear background
+    f_fs( '#48a' );
+    C.fillRect( 0,i1, i4,i2 );
+    
+    // back layers
+    f_drawCave( c3[0], X/8, 60 );
+    f_drawCave( c2[0], X/4, 30 );
+
+    f_updateMap();
+    f_drawCar();
+
+    // front layer
+    f_drawCave( c1[0], X*1.5, 0 );
+    // info
+    f_drawText();
+    
+    // motor sfx
+    if(!jumpSnd)
+      ++F % 2 == 1 ? f_beep( 0.05, 600 + V*50 ) : f_vol(0);
+    
+    f_physics();
+    
+  }
+  f_main();
+
+  
+  // physics
+  //
+  function f_physics() {
+  
+    // motion
+    X += dt * V * i2;
+    // gravity
+    pY -= i3 * dt;
+    Y += pY * dt;
+    // landing & bounce sfx
+    if( Y<0 ) {
+      if( key>=0 ) {
+        pY = 80 * ( 1 + key--);
+        f_beep( 0.5, i4);
+      }
+      Y = 0;
+    }
+
+    // collisions
+    m = map[0];
+    for(i=1;i<6;i++) {
+      m1 = m[i];
+      if( m1[0]&&m1[1] ) {
+        dx=Math.abs(X-m[0]-m1[2]-i4),y=250-Y;
+        if(m1[1]>0) {
+          if(Y<(m1[1]+1)*25&&dx<30-Y/5) {
+            q=~~(Y/30);
+            if(m1[1]!=q) {
+              V-=(m1[1]-q)*0.2;
+              m1[0]=0,m1[1]=q;f_beep(0.1,1200);
+              if(V<=0) f_newGame();
+            }
+          }
+        }else
+        if(y<(1-m1[1])*25&&dx<30-y/5) {
+          q=~~(y/30);
+          if(m1[1]!=q) {
+            V+=(q+m1[1])*0.25;
+            m1[0]=0,m1[1]=-q;
+            f_beep(0.1,1200);
+            if(V<=0) f_newGame();
+          }
+        }
+      }
+    }
+  }
+  
+  
+  // draw cave
+  //
+  function f_drawCave( cc, x,y ) {
+    // left half
+    C.drawImage( cc, -( x + i4 ) % i6 + i4, y );
+    // right half
+    C.drawImage( cc, -x % i6 + i5, y );
+  }
+
+  
+  // update map
+  //
+  function f_updateMap() {
+    m0=map[0],m1=map[1],x=~~(X/2e3)*2e3;
+    // stalactites
+    if(m0[0]<x)
+      for(m0[0]=x,j=1;j<6;j++)
+        m0[j] = [ 1, f_rnd(9)-4, f_rnd(i4)-i3];
+    for(j=1;j<6;j++)
+      _obj(j);
+    
+    function _obj(id) {
+      q=m0[id];
+      q[1]&&f_drawObj( x+1e3+q[2], Math.sign(q[1]), pC[Math.abs(q[1])] );
+    }
+  }
+  
+  
+  // draw object
+  //
+  function f_drawObj(x,d,p) {
+    x -= X;
+    f_sv();
+    C.beginPath();
+    C.strokeStyle = '#fff';
+    C.lineWidth = 2;
+    f_fs( '#38708c' );
+    f_tr( x, d<0 ? 50:350 );
+    f_sc( -1.5,1.5*d );
+    C.fill( p );
+    C.stroke( p );
+    f_re();
+  }
+  
+  
+  // draw car 
+  //
+  function f_drawCar() {
+    f_fs( '#fff' );
+    f_sv();
+    f_tr( i2, 320-Y );
+    C.rotate( -Y*0.002 );
+    f_sc( 0.4 );
+    C.fill( pCar );
+    f_re();
+    f_drawWheel( -1 );
+    f_drawWheel( 0 );
+    f_drawWheel( 1 );
+  }
+
+  
+  // draw wheel
+  //
+  function f_drawWheel(n){
+    f_sv();
+    C.shadowColor = '#2e5c73';
+    C.shadowBlur = 10;
+    f_tr( i2 + n*30, 335 - Y*( 1 + n*0.05 ));
+    C.rotate( vA );
+    C.fillRect( -8,-8, 16,16 );
+    f_re();
+  }
+
+
+  // draw text
+  //
+  function f_drawText() {
+    f_sv();
+    C.font = 'bold 30px Courier New';
+    f_fs( 'rgb(' + ~~( 255 - V*50 ) + ',' + ~~( 130 + V*50 ) + ',60)' );
+    C.fillText( ~~( V*10 ) + '.' + ( '0' + ~~( V*1e3 ) % i1).substr( -2 ), 20, 380 );
+    f_fs( '#76bbdf' );
+    C.textAlign = "right";
+    C.fillText(( '000000' + ~~S ).substr( -7 ), 780, 380 );
+    f_re();
+  }
+  
+  
+  // f_canvas
+  //
+  function f_canvas(t) {
+    
+    Q = D.createElement('canvas');
+    w = t ? i5 : i4;
+    h = t<2 ? i3 : t<3 ? 340:280;
+    Q.width = w;
+    Q.height = h;
+    s = Q.style;
+    s.width = w+'px';
+    s.height = h+'px';
+    return [ Q, Q.getContext('2d') ];
+    
+  }
+
+  
+  // cave gen
+  //
+  function f_genCave( cc ){
+    
+    h = cc[0].height;
+    t = h>350 ? 0 : h>300 ? 1 : 2;
+    s = 20 - t*6;
+    // top layer
+    _cave( cc, 0 );
+    // bottom layer
+    _cave( cc, 1 );
+    
+    function _cave( context, invert ) {
+    
+      ctx = context[1];
+      q = ctx.fillStyle = !t ? '#2e5c73' : t<2 ? '#336680' : '#38708c';
+      y = 70 + t*10;
+      y = invert ? h-y : y;
+      ctx.shadowColor = q;
+      ctx.shadowBlur = 20;
+      //ctx.filter='blur('+(1+t*2)+'px)';
+      
+      ctx.beginPath();
+      ctx.moveTo( 0, invert*h );
+      ctx.lineTo( 0, y );
+      for( i=0, j=40-5*t, k=i5/j, H=40+t*10; i<k; i++ ) {
+        y1 = H*0.5 + f_rnd(H);
+        y2 = H*1.2 + f_rnd(H);
+        ctx.quadraticCurveTo( i*j, invert ? h-y1 : y1,
+                        i*j + j/2, invert ? h-y2 : y2 );
+      }
+      ctx.lineTo( i5, y );
+      ctx.lineTo( i5+10, invert*h );
+      ctx.fill();
+    }
+    
+  }
+  
+  
+  // key/mouse/touch down
+  //
+  function f_keydown(){
+    // wait 0.4 sec before second jump
+    if( jpause > ct )
+      return;
+    jpause = ct + 0.4;
+    // second jump
+    if( Y>20 && !key ) {
+      key = 1;
+      pY = 300;
+      f_jump( 1 );
+      V -= 0.2;
+    }
+    // first jump
+    if( Y<5 ) {
+      key = 0;
+      pY = 300;
+      f_jump( 0 );
+      V -= 0.1;
+    }
+  }
+  
+  
+  // do jump
+  //
+  function f_jump( n ) {
+    jumpSnd = 1;
+    f_beep( 0.5, 500 );
+    setTimeout(
+      function(){
+        jumpSnd = 0
+      },
+      50
+    );
+  }
+  
+  function f_time(){
+    return +new Date()*0.001-t0
+  }
+  function f_rnd(r){
+    return ~~(Math.random()*r)
+  }
+  function f_Path(p,q,P) {
+    return new Path2D('M-'+p+(q?'-12 59-14 47 10 47 25 0 22 11 10-47':'')+P+'z');
+  }
+  function f_fs(s) {
+    C.fillStyle = s
+  }
+  function f_re() {
+    C.restore()
+  }
+  function f_sv() {
+    C.save()
+  }
+  function f_tr(x,y) {
+    C.translate( x, y )
+  }
+  function f_sc(sx,sy) {
+    C.scale( sx,sy||sx )
+  }
+  function f_vol(v) {
+    GN.gain.value = v;
+  }
+  function f_beep(v,f) {
+    f_vol( v );
+    OS.frequency.value = f;
+  }
+
+  // window show/hide
+  W.onblur = function(){
+    wndActive = 0;
+    f_vol(0);
+  };
+  W.onfocus = function(){
+    wndActive = 1;
+  };
+}());
+</script>
